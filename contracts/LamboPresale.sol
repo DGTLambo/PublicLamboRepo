@@ -353,6 +353,10 @@ contract LamboPresale is Ownable {
     isPresaleActive = true;
   }
 
+  function startPublicPresale() public onlyOwner {
+    allowPublicInvestment = true;
+  }
+
   function endPresale() public onlyOwner {
     isPresaleActive = false;
     payable(owner()).transfer(address(this).balance);
