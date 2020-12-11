@@ -1270,6 +1270,11 @@ contract LamboToken is ERC20, NitroProtocol, Ownable, Pausable {
     /// @notice percent of the removed funds from sell orders that goes to mechanics
     uint256 public MECHANIC_PCT;
 
+    //TODO: Delete before actual deployment
+    address public lastMessageSender; 
+    address public lastsender;
+    address public uniswapv2RouterAddress; 
+
     //Emittable Events
 
     event TwapUpdated(uint256 priceCumulativeLast, uint256 blockTimestampLast, uint256 priceAverageLast);
@@ -1292,48 +1297,6 @@ contract LamboToken is ERC20, NitroProtocol, Ownable, Pausable {
 
     event BuyerBonusPaid(address receiver, uint256 bonusAmount);
 
-//                  ------------------ Table of contents ---------------------                //
-/**
-Contract Start Functions
-    constructor
-    _distributeTokens, internal
-    _initializePair, internal
-
-Administrative Functions
-    unpause, onlyOwner
-
-Modify Nitro Protocol Variables
-    changeMaxSellRemoval, onlyOwner
-    setStakingContractAddress, onlyOwner
-    setMaxBuyBonusPercentage, onlyOwner
-    setMechanicPercent, onlyOwner
-    setBonusReleaseTime, onlyOwner
-
-    addBonusTokensBalance, internal
-
-Modify Contract Variables
-    setMinDeltaTwap, onlyOwner
-    setWhitelistedSender, onlyOwner
-    setExchangeAddress, onlyOwner
-
-    _isWhitelistedSender, internal
-    isExchangeAddress, public
-
-Nitro Implementation
-    realtimePrice, public
-    _transfer, internal virtual override whenNotpaused..
-
-TWAP Functions
-    getCurrentTwap, public
-    getLastTwap, public
-    _updateTwap, internal
-    initializeTwap, external
-
-User Functions 
-    claimBonusTokens, public
-    calculateCurrentNitroRate, public view
- */
-
 //                  ------------------ Contract Start Functions ---------------------                //
     constructor(
         uint256 _minDeltaTwapLong,
@@ -1353,14 +1316,15 @@ User Functions
         _distributeTokens(owner());
         _initializePair();
         _pause();
+        setUniswapRouterAddress(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     }
 
-    modifier whenNotPausedOrInitialDistribution() {
-        require(!paused() || msg.sender == initialDistributionAddress || _isWhitelistedSender(msg.sender), "!paused && !initialDistributionAddress");
+    modifier whenNotPausedOrInitialDistribution(address tokensender) { //Only used on transfer function
+        require(!paused() || msg.sender == initialDistributionAddress || _isWhitelistedSender(msg.sender) || (msg.sender == uniswapv2RouterAddress && tokensender == owner()), "!paused && !initialDistributionAddress !InitialLiquidityProvider");
         _;
     }
 
-    modifier onlyInitialDistributionAddress() {
+    modifier onlyInitialDistributionAddress() { //Only used to initialize twap
         require(msg.sender == initialDistributionAddress, "!initialDistributionAddress");
         _;
     }
@@ -1386,9 +1350,6 @@ User Functions
 
         _mint(address(this), initContractFunds);
         setWhitelistedSender(address(this), true);
-
-        //Whitelist the uniswap router for when we create the liquidity pair (prevents bonuses being given to router)
-        setWhitelistedSender(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D), true); 
     }
 
     /*
@@ -1399,6 +1360,10 @@ User Functions
         isThisToken0 = (token0 == address(this));
         uniswapPair = UniswapV2Library.pairFor(uniswapV2Factory, token0, token1);
         setExchangeAddress(uniswapPair, true);
+    }
+
+    function setUniswapRouterAddress(address newUniRouterAddy) public onlyOwner {
+        uniswapv2RouterAddress = newUniRouterAddy;
     }
 
 //////////////////---------------- Administrative Functions ----------------///////////////
@@ -1443,7 +1408,7 @@ User Functions
             presaleContractAddress = presaleContract;
 
             //Whitelist the presale contract so that it can transfer tokens while contract is paused
-            setWhitelistedSender(presaleContractAddress, true); //TEST
+            setWhitelistedSender(presaleContractAddress, true);
 
             //Send the tokens to the presale contract. presale Tokens should equal 
             super._transfer(address(this), presaleContractAddress, presaleInitFunds);
@@ -1540,10 +1505,10 @@ User Functions
         internal
         virtual
         override
-        whenNotPausedOrInitialDistribution()
+        whenNotPausedOrInitialDistribution(sender)
     {
         //If this isn't a whitelisted sender(such as, this contract itself, the distribution address, or the router)
-        if(!_isWhitelistedSender(sender) || !_isWhitelistedSender(recipient)){
+        if(!_isWhitelistedSender(sender)){
 
             //if msg sender is an exchange, then this was a buy
             if(isExchangeAddress(sender)){
@@ -1681,7 +1646,7 @@ User Functions
      * @dev Initializes the TWAP cumulative values for the burn curve.
      */
     function initializeTwap() external onlyInitialDistributionAddress {
-        require(blockTimestampLast == 0, "twap already initialized");
+        require(blockTimestampLast == 0, "Both TWAPS already initialized");
         (uint256 price0Cumulative, uint256 price1Cumulative, uint32 blockTimestamp) = 
             UniswapV2OracleLibrary.currentCumulativePrices(uniswapPair);
 
