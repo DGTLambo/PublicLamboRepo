@@ -1270,9 +1270,7 @@ contract LamboToken is ERC20, NitroProtocol, Ownable, Pausable {
     /// @notice percent of the removed funds from sell orders that goes to mechanics
     uint256 public MECHANIC_PCT;
 
-    //TODO: Delete before actual deployment
-    address public lastMessageSender; 
-    address public lastsender;
+    //Lets us check to see if the user account is moving lambo at this address' request
     address public uniswapv2RouterAddress; 
 
     //Emittable Events
